@@ -1,0 +1,112 @@
+import tensorflow as tf
+import numpy as np
+import matplotlib.pyplot as plt
+from tensorflow.keras.preprocessing import image_dataset_from_directory
+from tensorflow.keras import layers, models
+
+# Define the paths to the dataset
+train_dir = '/content/drive/MyDrive/RetinopathyDataset/Diabetic Retinopathy.v1i.yolov8/train'
+valid_dir = '/content/drive/MyDrive/RetinopathyDataset/Diabetic Retinopathy.v1i.yolov8/valid'
+test_dir = '/content/drive/MyDrive/RetinopathyDataset/Diabetic Retinopathy.v1i.yolov8/test'
+
+# Load the datasets
+def load_dataset(directory):
+    dataset = image_dataset_from_directory(
+        directory,
+        image_size=(224, 224),  # Resizing the images to the required size
+        batch_size=32,
+        label_mode='int',  # Labels as integer indices
+        shuffle=True,
+    )
+    return dataset, dataset.class_names
+
+train_dataset, class_names = load_dataset(train_dir)
+valid_dataset, _ = load_dataset(valid_dir)
+test_dataset, _ = load_dataset(test_dir)
+
+# Normalize the datasets
+def normalize_data(dataset):
+    return dataset.map(lambda x, y: (x / 255.0, y))
+
+train_dataset = normalize_data(train_dataset)
+valid_dataset = normalize_data(valid_dataset)
+test_dataset = normalize_data(test_dataset)
+
+# Build the model
+def build_model():
+    base_model = tf.keras.applications.ResNet50(weights='imagenet', input_shape=(224, 224, 3), include_top=False)
+    base_model.trainable = False  # Freeze the base model
+
+    model = models.Sequential([
+        base_model,
+        layers.GlobalAveragePooling2D(),
+        layers.Dense(256, activation='relu'),
+        layers.Dense(len(class_names), activation='softmax')  # Output layer with softmax
+    ])
+    
+    model.compile(optimizer='adam',
+                  loss='sparse_categorical_crossentropy',
+                  metrics=['accuracy'])
+    
+    return model
+
+# Build and train the model
+model = build_model()
+history = model.fit(
+    train_dataset,
+    validation_data=valid_dataset,
+    epochs=500
+)
+
+# Evaluate the model on the test dataset
+loss, accuracy = model.evaluate(test_dataset)
+print(f"Test Loss: {loss}")
+print(f"Test Accuracy: {accuracy}")
+
+# Save the trained model
+model.save('/content/drive/MyDrive/RetinopathyModel1.keras')
+
+# Visualize training progress (optional)
+plt.plot(history.history['accuracy'], label='Training Accuracy')
+plt.plot(history.history['val_accuracy'], label='Validation Accuracy')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.show()
+
+# Function to make predictions and display results on new images
+def preprocess_image(img_path):
+    img = tf.keras.preprocessing.image.load_img(img_path, target_size=(224, 224))
+    img_array = tf.keras.preprocessing.image.img_to_array(img)
+    img_array = tf.expand_dims(img_array, 0)  # Add batch dimension
+    img_array = img_array / 255.0  # Normalize to [0,1]
+    return img_array
+
+# Load the trained model (ensure this path is correct)
+model = tf.keras.models.load_model('/content/drive/MyDrive/RetinopathyModel1.keras')
+
+# Function to predict and display results
+def predict_and_display(image_path):
+    img_array = preprocess_image(image_path)  # Preprocess image for model
+    predictions = model.predict(img_array)  # Get model's prediction
+    
+    # Get predicted class (0: No Retinopathy, 1: Diabetic Retinopathy)
+    predicted_class_index = np.argmax(predictions, axis=1)[0]
+    predicted_class_label = class_names[predicted_class_index]  # Get the class name
+    
+    # Display the image and the prediction
+    img = image.load_img(image_path)  # Load image for display
+    plt.imshow(img)
+    plt.axis('off')  # Hide axes
+    plt.title(f"Prediction: {predicted_class_label}")
+    plt.show()
+
+    # Print prediction message
+    if predicted_class_label == 'Diabetic Retinopathy':
+        print("Diabetic Retinopathy Detected!")
+    else:
+        print("No Diabetic Retinopathy Detected")
+
+# Test on a new image (replace with the path to your test image)
+img_path = '/content/drive/MyDrive/RetinopathyDataset/qtest2.jpg'  # Replace with the path to your test image
+predict_and_display(img_path)
